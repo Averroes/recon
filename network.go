@@ -80,6 +80,45 @@ func ASNToNetblocks(asn int) ([]string, error) {
 	return blocks, nil
 }
 
+func IPToCIDR(addr string) string {
+	// Get the AS record for the IP address
+	record, err := IPToASRecord(addr)
+	if err != nil {
+		return ""
+	}
+	// Get the netblocks associated with the ASN
+	netblocks, err := ASNToNetblocks(record.ASN)
+	if err != nil {
+		return ""
+	}
+	// Convert the CIDR into Go net types, and select the correct netblock
+	var cidr string
+	ip := net.ParseIP(addr)
+	for _, nb := range netblocks {
+		_, ipnet, err := net.ParseCIDR(nb)
+
+		if err == nil && ipnet.Contains(ip) {
+			cidr = nb
+			break
+		}
+	}
+	return cidr
+}
+
+func Hosts(cidr string) ([]string, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); inc(ip) {
+		ips = append(ips, ip.String())
+	}
+	// Remove network address and broadcast address
+	return ips[1 : len(ips)-1], nil
+}
+
 /* Private functions */
 
 func parseOriginResponse(line string) *ASRecord {
@@ -96,5 +135,14 @@ func parseOriginResponse(line string) *ASRecord {
 		ASName: strings.TrimSpace(fields[3]),
 		CN:     strings.TrimSpace(fields[4]),
 		ISP:    strings.TrimSpace(fields[5]),
+	}
+}
+
+func inc(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
 	}
 }

@@ -8,11 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 type DNSAnswer struct {
@@ -46,7 +42,7 @@ func ResolveDNS(name, t string) ([]DNSAnswer, error) {
 	var answers []DNSAnswer
 
 	u, _ := url.Parse("https://dns.google.com/resolve")
-	// do not send our location information with the query
+	// Do not send our location information with the query
 	u.RawQuery = url.Values{"name": {name}, "type": {t}, "edns_client_subnet": {"0.0.0.0/0"}}.Encode()
 
 	page := GetWebPage(u.String())
@@ -73,7 +69,6 @@ func ResolveDNS(name, t string) ([]DNSAnswer, error) {
 	for _, a := range r.Answer {
 		answers = append(answers, a)
 	}
-
 	return answers, nil
 }
 
@@ -81,7 +76,7 @@ func ReverseDNS(ip string) (string, error) {
 	var name string
 
 	addr := reverseIP(ip) + ".in-addr.arpa"
-	answers, err := Resolve(addr, "PTR")
+	answers, err := ResolveDNS(addr, "PTR")
 	if err == nil {
 		for _, a := range answers {
 			if a.Type == 12 {
@@ -96,13 +91,26 @@ func ReverseDNS(ip string) (string, error) {
 			err = errors.New("PTR record not found")
 		}
 	}
-
 	return name, err
+}
+
+// Goes through the DNS answers looking for A and AAAA records,
+// and returns the first Data field found for those types
+func GetARecordData(answers []DNSAnswer) string {
+	var data string
+
+	for _, a := range answers {
+		if a.Type == 1 || a.Type == 28 {
+			data = a.Data
+			break
+		}
+	}
+	return data
 }
 
 // CheckDomainForWildcard detects if a domain returns an IP
 // address for "bad" names, and if so, which address is used
-func CheckDomainForWildcard(domain string) DnsWildcard {
+func CheckDomainForWildcard(domain string) *DnsWildcard {
 	var ip1, ip2, ip3 string
 
 	name1 := "81very92unlikely03name." + domain
@@ -110,21 +118,27 @@ func CheckDomainForWildcard(domain string) DnsWildcard {
 	name3 := "just555little333me." + domain
 
 	if a1, err := ResolveDNS(name1, "A"); err == nil {
-		ip1 = getARecordData(a1)
+		ip1 = GetARecordData(a1)
 	}
 
 	if a2, err := ResolveDNS(name2, "A"); err == nil {
-		ip2 = getARecordData(a2)
+		ip2 = GetARecordData(a2)
 	}
 
 	if a3, err := ResolveDNS(name3, "A"); err == nil {
-		ip3 = getARecordData(a3)
+		ip3 = GetARecordData(a3)
 	}
 
 	if ip1 != "" && (ip1 == ip2 && ip2 == ip3) {
-		return DnsWildcard{HasWildcard: true, IP: ip1}
+		return &DnsWildcard{
+			HasWildcard: true,
+			IP:          ip1,
+		}
 	}
-	return DnsWildcard{HasWildcard: false, IP: ""}
+	return &DnsWildcard{
+		HasWildcard: false,
+		IP:          "",
+	}
 }
 
 /* Private functions & methods */
