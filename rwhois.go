@@ -115,11 +115,11 @@ func getViewDNSTable(page string) string {
 	s := page
 
 	for i := 0; i < 4; i++ {
-		if b := strings.Index(s, "<table"); b == -1 {
+		b := strings.Index(s, "<table")
+		if b == -1 {
 			return ""
-		} else {
-			begin += b + 6
 		}
+		begin += b + 6
 
 		if e := strings.Index(s[b:], "</table>"); e == -1 {
 			return ""
