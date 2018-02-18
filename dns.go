@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/miekg/dns"
 )
 
 type DNSAnswer struct {
@@ -38,7 +40,109 @@ type googleDNSResolve struct {
 	Authority []DNSAnswer `json:"Authority"`
 }
 
-func ResolveDNS(name, t string) ([]DNSAnswer, error) {
+func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
+	var qt uint16
+
+	switch qtype {
+	case "CNAME":
+		qt = dns.TypeCNAME
+	case "A":
+		qt = dns.TypeA
+	case "AAAA":
+		qt = dns.TypeAAAA
+	case "PTR":
+		qt = dns.TypePTR
+	default:
+		return DNSAnswer{}, errors.New("Unsupported DNS type")
+	}
+
+	result, err := dnsQuery(name, server, qt)
+	if err == nil {
+		return result, nil
+	}
+	return DNSAnswer{}, errors.New("The query was unsuccessful")
+}
+
+// dnsQuery encapsulates all the miekg/dns usage
+func dnsQuery(name, server string, qtype uint16) (DNSAnswer, error) {
+	c := new(dns.Client)
+	c.Net = "udp"
+
+	qc := uint16(dns.ClassINET)
+	m := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Authoritative:     false,
+			AuthenticatedData: false,
+			CheckingDisabled:  false,
+			RecursionDesired:  true,
+			Opcode:            dns.OpcodeQuery,
+			Id:                dns.Id(),
+			Rcode:             dns.RcodeSuccess,
+		},
+		Question: make([]dns.Question, 1),
+	}
+	m.Question[0] = dns.Question{Name: dns.Fqdn(name), Qtype: qtype, Qclass: qc}
+
+	r, rtt, err := c.Exchange(m, server)
+	if err != nil {
+		return DNSAnswer{}, errors.New("Failed to exchange with the nameserver")
+	}
+
+	if r != nil && r.Rcode != dns.RcodeSuccess {
+		return DNSAnswer{}, errors.New("Query was unsuccessful")
+	}
+
+	var data string
+
+	for _, a := range r.Answer {
+		if a.Header().Rrtype == qtype {
+			switch qtype {
+			case dns.TypeA:
+				if ta, ok := a.(*dns.A); ok {
+					data = ta.A.String()
+				}
+			case dns.TypeAAAA:
+				if ta, ok := a.(*dns.AAAA); ok {
+					data = ta.AAAA.String()
+				}
+			case dns.TypeCNAME:
+				if ta, ok := a.(*dns.CNAME); ok {
+					data = ta.Target
+				}
+			case dns.TypePTR:
+				if ta, ok := a.(*dns.PTR); ok {
+					data = ta.Ptr
+				}
+			}
+		}
+	}
+
+	if data == "" {
+		return DNSAnswer{}, errors.New("Query did not return the desired DNS type")
+	}
+	return DNSAnswer{Name: name, Type: int(qtype), TTL: int(rtt), Data: data}, nil
+}
+
+func ReverseDNS(ip, server string) (string, error) {
+	var name string
+
+	addr := reverseIP(ip) + ".in-addr.arpa"
+	answer, err := ResolveDNS(addr, server, "PTR")
+	if err == nil {
+		if answer.Type == 12 {
+			l := len(answer.Data)
+
+			name = answer.Data[:l-1]
+		}
+
+		if name == "" {
+			err = errors.New("PTR record not found")
+		}
+	}
+	return name, err
+}
+
+func GoogleResolveDNS(name, t string) ([]DNSAnswer, error) {
 	var answers []DNSAnswer
 
 	u, _ := url.Parse("https://dns.google.com/resolve")
@@ -72,28 +176,6 @@ func ResolveDNS(name, t string) ([]DNSAnswer, error) {
 	return answers, nil
 }
 
-func ReverseDNS(ip string) (string, error) {
-	var name string
-
-	addr := reverseIP(ip) + ".in-addr.arpa"
-	answers, err := ResolveDNS(addr, "PTR")
-	if err == nil {
-		for _, a := range answers {
-			if a.Type == 12 {
-				l := len(a.Data)
-
-				name = a.Data[:l-1]
-				break
-			}
-		}
-
-		if name == "" {
-			err = errors.New("PTR record not found")
-		}
-	}
-	return name, err
-}
-
 // Goes through the DNS answers looking for A and AAAA records,
 // and returns the first Data field found for those types
 func GetARecordData(answers []DNSAnswer) string {
@@ -110,23 +192,23 @@ func GetARecordData(answers []DNSAnswer) string {
 
 // CheckDomainForWildcard detects if a domain returns an IP
 // address for "bad" names, and if so, which address is used
-func CheckDomainForWildcard(domain string) *DnsWildcard {
+func CheckDomainForWildcard(domain, server string) *DnsWildcard {
 	var ip1, ip2, ip3 string
 
 	name1 := "81very92unlikely03name." + domain
 	name2 := "45another34random99name." + domain
 	name3 := "just555little333me." + domain
 
-	if a1, err := ResolveDNS(name1, "A"); err == nil {
-		ip1 = GetARecordData(a1)
+	if a1, err := ResolveDNS(name1, server, "A"); err == nil {
+		ip1 = a1.Data
 	}
 
-	if a2, err := ResolveDNS(name2, "A"); err == nil {
-		ip2 = GetARecordData(a2)
+	if a2, err := ResolveDNS(name2, server, "A"); err == nil {
+		ip2 = a2.Data
 	}
 
-	if a3, err := ResolveDNS(name3, "A"); err == nil {
-		ip3 = GetARecordData(a3)
+	if a3, err := ResolveDNS(name3, server, "A"); err == nil {
+		ip3 = a3.Data
 	}
 
 	if ip1 != "" && (ip1 == ip2 && ip2 == ip3) {
