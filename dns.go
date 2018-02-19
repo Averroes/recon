@@ -40,6 +40,21 @@ type googleDNSResolve struct {
 	Authority []DNSAnswer `json:"Authority"`
 }
 
+type request struct {
+	Name   string
+	Server string
+	Type   uint16
+	Ans    chan *DNSAnswer
+}
+
+var dnsRequest chan *request
+
+func init() {
+	dnsRequest = make(chan *request)
+
+	go dnsQuery()
+}
+
 func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
 	var qt uint16
 
@@ -56,18 +71,32 @@ func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
 		return DNSAnswer{}, errors.New("Unsupported DNS type")
 	}
 
-	result, err := dnsQuery(name, server, qt)
-	if err == nil {
-		return result, nil
+	answer := make(chan *DNSAnswer, 2)
+	dnsRequest <- &request{
+		Name:   name,
+		Server: server,
+		Type:   qt,
+		Ans:    answer,
 	}
-	return DNSAnswer{}, errors.New("The query was unsuccessful")
+
+	a := <-answer
+	if a == nil {
+		return DNSAnswer{}, errors.New("The query was unsuccessful")
+	}
+	return *a, nil
 }
 
 // dnsQuery encapsulates all the miekg/dns usage
-func dnsQuery(name, server string, qtype uint16) (DNSAnswer, error) {
+func dnsQuery() {
 	c := new(dns.Client)
 	c.Net = "udp"
 
+	for {
+		go DNSExchange(c, <-dnsRequest)
+	}
+}
+
+func DNSExchange(client *dns.Client, req *request) {
 	qc := uint16(dns.ClassINET)
 	m := &dns.Msg{
 		MsgHdr: dns.MsgHdr{
@@ -81,22 +110,24 @@ func dnsQuery(name, server string, qtype uint16) (DNSAnswer, error) {
 		},
 		Question: make([]dns.Question, 1),
 	}
-	m.Question[0] = dns.Question{Name: dns.Fqdn(name), Qtype: qtype, Qclass: qc}
+	m.Question[0] = dns.Question{Name: dns.Fqdn(req.Name), Qtype: req.Type, Qclass: qc}
 
-	r, rtt, err := c.Exchange(m, server)
+	r, rtt, err := client.Exchange(m, req.Server)
 	if err != nil {
-		return DNSAnswer{}, errors.New("Failed to exchange with the nameserver")
+		req.Ans <- nil
+		return
 	}
 
 	if r != nil && r.Rcode != dns.RcodeSuccess {
-		return DNSAnswer{}, errors.New("Query was unsuccessful")
+		req.Ans <- nil
+		return
 	}
 
 	var data string
 
 	for _, a := range r.Answer {
-		if a.Header().Rrtype == qtype {
-			switch qtype {
+		if a.Header().Rrtype == req.Type {
+			switch req.Type {
 			case dns.TypeA:
 				if ta, ok := a.(*dns.A); ok {
 					data = ta.A.String()
@@ -118,9 +149,15 @@ func dnsQuery(name, server string, qtype uint16) (DNSAnswer, error) {
 	}
 
 	if data == "" {
-		return DNSAnswer{}, errors.New("Query did not return the desired DNS type")
+		req.Ans <- nil
+		return
 	}
-	return DNSAnswer{Name: name, Type: int(qtype), TTL: int(rtt), Data: data}, nil
+	req.Ans <- &DNSAnswer{
+		Name: req.Name,
+		Type: int(req.Type),
+		TTL:  int(rtt),
+		Data: data,
+	}
 }
 
 func ReverseDNS(ip, server string) (string, error) {
