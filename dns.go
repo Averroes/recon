@@ -20,11 +20,6 @@ type DNSAnswer struct {
 	Data string `json:"data"`
 }
 
-type DnsWildcard struct {
-	HasWildcard bool
-	IP          string
-}
-
 type googleDNSResolve struct {
 	Status   int  `json:"Status"`
 	TC       bool `json:"TC"`
@@ -225,39 +220,6 @@ func GetARecordData(answers []DNSAnswer) string {
 		}
 	}
 	return data
-}
-
-// CheckDomainForWildcard detects if a domain returns an IP
-// address for "bad" names, and if so, which address is used
-func CheckDomainForWildcard(domain, server string) *DnsWildcard {
-	var ip1, ip2, ip3 string
-
-	name1 := "81very92unlikely03name." + domain
-	name2 := "45another34random99name." + domain
-	name3 := "just555little333me." + domain
-
-	if a1, err := ResolveDNS(name1, server, "A"); err == nil {
-		ip1 = a1.Data
-	}
-
-	if a2, err := ResolveDNS(name2, server, "A"); err == nil {
-		ip2 = a2.Data
-	}
-
-	if a3, err := ResolveDNS(name3, server, "A"); err == nil {
-		ip3 = a3.Data
-	}
-
-	if ip1 != "" && (ip1 == ip2 && ip2 == ip3) {
-		return &DnsWildcard{
-			HasWildcard: true,
-			IP:          ip1,
-		}
-	}
-	return &DnsWildcard{
-		HasWildcard: false,
-		IP:          "",
-	}
 }
 
 /* Private functions & methods */
