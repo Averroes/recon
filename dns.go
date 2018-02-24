@@ -119,7 +119,6 @@ func DNSExchange(client *dns.Client, req *request) {
 	}
 
 	var data string
-
 	for _, a := range r.Answer {
 		if a.Header().Rrtype == req.Type {
 			switch req.Type {
@@ -151,7 +150,7 @@ func DNSExchange(client *dns.Client, req *request) {
 		Name: req.Name,
 		Type: int(req.Type),
 		TTL:  int(rtt),
-		Data: data,
+		Data: strings.TrimSpace(data),
 	}
 }
 
