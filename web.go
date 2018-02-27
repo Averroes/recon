@@ -10,8 +10,25 @@ import (
 	"strings"
 )
 
-func GetWebPage(url string) string {
-	resp, err := http.Get(url)
+const (
+	USER_AGENT  = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
+	ACCEPT      = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+	ACCEPT_LANG = "en-US,en;q=0.8"
+)
+
+func GetWebPage(u string) string {
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return ""
+	}
+
+	req.Header.Add("User-Agent", USER_AGENT)
+	req.Header.Add("Accept", ACCEPT)
+	req.Header.Add("Accept-Language", ACCEPT_LANG)
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -21,10 +38,10 @@ func GetWebPage(url string) string {
 	return string(in)
 }
 
-func GetJSONPage(url string) string {
+func GetJSONPage(u string) string {
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return ""
 	}
@@ -40,8 +57,8 @@ func GetJSONPage(url string) string {
 	return string(in)
 }
 
-func PostXMLWeb(url, body string) string {
-	resp, err := http.Post(url, "text/xml", strings.NewReader(body))
+func PostXMLWeb(u, body string) string {
+	resp, err := http.Post(u, "text/xml", strings.NewReader(body))
 	if err != nil {
 		return ""
 	}
@@ -51,8 +68,20 @@ func PostXMLWeb(url, body string) string {
 	return string(in)
 }
 
-func PostFormWeb(u, body string) string {
-	resp, err := http.PostForm(u, url.Values{"domain": {body}})
+func PostForm(u string, params url.Values) string {
+	client := &http.Client{}
+
+	req, err := http.NewRequest("POST", u, strings.NewReader(params.Encode()))
+	if err != nil {
+		return ""
+	}
+
+	req.Header.Add("User-Agent", USER_AGENT)
+	req.Header.Add("Accept", ACCEPT)
+	req.Header.Add("Accept-Language", ACCEPT_LANG)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
