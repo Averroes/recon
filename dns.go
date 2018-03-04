@@ -39,18 +39,18 @@ type request struct {
 	Name   string
 	Server string
 	Type   uint16
-	Ans    chan *DNSAnswer
+	Ans    chan []DNSAnswer
 }
 
 var dnsRequest chan *request
 
 func init() {
-	dnsRequest = make(chan *request)
+	dnsRequest = make(chan *request, 50)
 
 	go dnsQuery()
 }
 
-func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
+func ResolveDNS(name, server, qtype string) ([]DNSAnswer, error) {
 	var qt uint16
 
 	switch qtype {
@@ -63,10 +63,10 @@ func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
 	case "PTR":
 		qt = dns.TypePTR
 	default:
-		return DNSAnswer{}, errors.New("Unsupported DNS type")
+		return []DNSAnswer{}, errors.New("Unsupported DNS type")
 	}
 
-	answer := make(chan *DNSAnswer, 2)
+	answer := make(chan []DNSAnswer)
 	dnsRequest <- &request{
 		Name:   name,
 		Server: server,
@@ -75,10 +75,10 @@ func ResolveDNS(name, server, qtype string) (DNSAnswer, error) {
 	}
 
 	a := <-answer
-	if a == nil {
-		return DNSAnswer{}, errors.New("The query was unsuccessful")
+	if len(a) == 0 {
+		return []DNSAnswer{}, errors.New("The query was unsuccessful")
 	}
-	return *a, nil
+	return a, nil
 }
 
 // dnsQuery encapsulates all the miekg/dns usage
@@ -107,63 +107,65 @@ func DNSExchange(client *dns.Client, req *request) {
 	}
 	m.Question[0] = dns.Question{Name: dns.Fqdn(req.Name), Qtype: req.Type, Qclass: qc}
 
+	var answers []DNSAnswer
+
 	r, rtt, err := client.Exchange(m, req.Server)
 	if err != nil {
-		req.Ans <- nil
+		req.Ans <- answers
 		return
 	}
 
 	if r != nil && r.Rcode != dns.RcodeSuccess {
-		req.Ans <- nil
+		req.Ans <- answers
 		return
 	}
 
-	var data string
+	var data []string
 	for _, a := range r.Answer {
 		if a.Header().Rrtype == req.Type {
 			switch req.Type {
 			case dns.TypeA:
 				if ta, ok := a.(*dns.A); ok {
-					data = ta.A.String()
+					data = append(data, ta.A.String())
 				}
 			case dns.TypeAAAA:
 				if ta, ok := a.(*dns.AAAA); ok {
-					data = ta.AAAA.String()
+					data = append(data, ta.AAAA.String())
 				}
 			case dns.TypeCNAME:
 				if ta, ok := a.(*dns.CNAME); ok {
-					data = ta.Target
+					data = append(data, ta.Target)
 				}
 			case dns.TypePTR:
 				if ta, ok := a.(*dns.PTR); ok {
-					data = ta.Ptr
+					data = append(data, ta.Ptr)
 				}
 			}
 		}
 	}
 
-	if data == "" {
-		req.Ans <- nil
-		return
+	for _, a := range data {
+		answers = append(answers, DNSAnswer{
+			Name: req.Name,
+			Type: int(req.Type),
+			TTL:  int(rtt),
+			Data: strings.TrimSpace(a),
+		})
 	}
-	req.Ans <- &DNSAnswer{
-		Name: req.Name,
-		Type: int(req.Type),
-		TTL:  int(rtt),
-		Data: strings.TrimSpace(data),
-	}
+
+	req.Ans <- answers
 }
 
 func ReverseDNS(ip, server string) (string, error) {
 	var name string
 
 	addr := reverseIP(ip) + ".in-addr.arpa"
-	answer, err := ResolveDNS(addr, server, "PTR")
+	answers, err := ResolveDNS(addr, server, "PTR")
 	if err == nil {
-		if answer.Type == 12 {
-			l := len(answer.Data)
+		if answers[0].Type == 12 {
+			l := len(answers[0].Data)
 
-			name = answer.Data[:l-1]
+			name = answers[0].Data[:l-1]
 		}
 
 		if name == "" {
