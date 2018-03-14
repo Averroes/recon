@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -110,6 +111,7 @@ func DNSExchange(client *dns.Client, req *request) {
 		Question: make([]dns.Question, 1),
 	}
 	m.Question[0] = dns.Question{Name: dns.Fqdn(req.Name), Qtype: req.Type, Qclass: qc}
+	m.Extra = append(m.Extra, setupOptions())
 
 	var answers []DNSAnswer
 
@@ -165,6 +167,25 @@ func DNSExchange(client *dns.Client, req *request) {
 		})
 	}
 	req.Ans <- answers
+}
+
+// setupOptions - Returns the EDNS0_SUBNET option for hiding our location
+func setupOptions() *dns.OPT {
+	e := &dns.EDNS0_SUBNET{
+		Code:          dns.EDNS0SUBNET,
+		Family:        1,
+		SourceNetmask: 0,
+		SourceScope:   0,
+		Address:       net.ParseIP("0.0.0.0").To4(),
+	}
+
+	return &dns.OPT{
+		Hdr: dns.RR_Header{
+			Name:   ".",
+			Rrtype: dns.TypeOPT,
+		},
+		Option: []dns.EDNS0{e},
+	}
 }
 
 func ReverseDNS(ip, server string) (string, error) {
