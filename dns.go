@@ -62,6 +62,10 @@ func ResolveDNS(name, server, qtype string) ([]DNSAnswer, error) {
 		qt = dns.TypeAAAA
 	case "PTR":
 		qt = dns.TypePTR
+	case "NS":
+		qt = dns.TypeNS
+	case "MX":
+		qt = dns.TypeMX
 	default:
 		return []DNSAnswer{}, errors.New("Unsupported DNS type")
 	}
@@ -140,6 +144,14 @@ func DNSExchange(client *dns.Client, req *request) {
 				if ta, ok := a.(*dns.PTR); ok {
 					data = append(data, ta.Ptr)
 				}
+			case dns.TypeNS:
+				if ta, ok := a.(*dns.NS); ok {
+					data = append(data, ta.Ns)
+				}
+			case dns.TypeMX:
+				if ta, ok := a.(*dns.MX); ok {
+					data = append(data, ta.Mx)
+				}
 			}
 		}
 	}
@@ -152,7 +164,6 @@ func DNSExchange(client *dns.Client, req *request) {
 			Data: strings.TrimSpace(a),
 		})
 	}
-
 	req.Ans <- answers
 }
 
