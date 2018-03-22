@@ -67,6 +67,14 @@ func ResolveDNS(name, server, qtype string) ([]DNSAnswer, error) {
 		qt = dns.TypeNS
 	case "MX":
 		qt = dns.TypeMX
+	case "TXT":
+		qt = dns.TypeTXT
+	case "SOA":
+		qt = dns.TypeSOA
+	case "SPF":
+		qt = dns.TypeSPF
+	case "SRV":
+		qt = dns.TypeSRV
 	default:
 		return []DNSAnswer{}, errors.New("Unsupported DNS type")
 	}
@@ -131,28 +139,54 @@ func DNSExchange(client *dns.Client, req *request) {
 		if a.Header().Rrtype == req.Type {
 			switch req.Type {
 			case dns.TypeA:
-				if ta, ok := a.(*dns.A); ok {
-					data = append(data, ta.A.String())
+				if t, ok := a.(*dns.A); ok {
+					data = append(data, t.A.String())
 				}
 			case dns.TypeAAAA:
-				if ta, ok := a.(*dns.AAAA); ok {
-					data = append(data, ta.AAAA.String())
+				if t, ok := a.(*dns.AAAA); ok {
+					data = append(data, t.AAAA.String())
 				}
 			case dns.TypeCNAME:
-				if ta, ok := a.(*dns.CNAME); ok {
-					data = append(data, ta.Target)
+				if t, ok := a.(*dns.CNAME); ok {
+					data = append(data, t.Target)
 				}
 			case dns.TypePTR:
-				if ta, ok := a.(*dns.PTR); ok {
-					data = append(data, ta.Ptr)
+				if t, ok := a.(*dns.PTR); ok {
+					data = append(data, t.Ptr)
 				}
 			case dns.TypeNS:
-				if ta, ok := a.(*dns.NS); ok {
-					data = append(data, ta.Ns)
+				if t, ok := a.(*dns.NS); ok {
+					data = append(data, t.Ns)
 				}
 			case dns.TypeMX:
-				if ta, ok := a.(*dns.MX); ok {
-					data = append(data, ta.Mx)
+				if t, ok := a.(*dns.MX); ok {
+					data = append(data, t.Mx)
+				}
+			case dns.TypeTXT:
+				if t, ok := a.(*dns.TXT); ok {
+					var all string
+
+					for _, piece := range t.Txt {
+						all += piece + " "
+					}
+					data = append(data, all)
+				}
+			case dns.TypeSOA:
+				if t, ok := a.(*dns.SOA); ok {
+					data = append(data, t.Ns+" "+t.Mbox)
+				}
+			case dns.TypeSPF:
+				if t, ok := a.(*dns.SPF); ok {
+					var all string
+
+					for _, piece := range t.Txt {
+						all += piece + " "
+					}
+					data = append(data, all)
+				}
+			case dns.TypeSRV:
+				if t, ok := a.(*dns.SRV); ok {
+					data = append(data, t.Target)
 				}
 			}
 		}
