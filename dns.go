@@ -118,7 +118,11 @@ func DNSExchange(client *dns.Client, req *request) {
 		},
 		Question: make([]dns.Question, 1),
 	}
-	m.Question[0] = dns.Question{Name: dns.Fqdn(req.Name), Qtype: req.Type, Qclass: qc}
+	m.Question[0] = dns.Question{
+		Name:   dns.Fqdn(req.Name),
+		Qtype:  req.Type,
+		Qclass: qc,
+	}
 	m.Extra = append(m.Extra, setupOptions())
 
 	var answers []DNSAnswer
