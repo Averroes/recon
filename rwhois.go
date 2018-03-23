@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/likexian/whois-go"
-	"github.com/likexian/whois-parser-go"
+	parser "github.com/likexian/whois-parser-go"
 )
 
 const SUBRE = "(([a-zA-Z0-9]{1}|[a-zA-Z0-9]{1}[a-zA-Z0-9-]{0,61}[a-zA-Z0-9]{1})[.]{1})+"
@@ -24,7 +24,7 @@ func ReverseWhois(domain string) []string {
 		return nil
 	}
 	// Parse the whois information just queried
-	target, err := whois_parser.Parser(w)
+	target, err := parser.Parse(w)
 	if err != nil {
 		return nil
 	}
@@ -136,7 +136,7 @@ func getViewDNSTable(page string) string {
 }
 
 // Returns elements from the whois data that will be good to match on
-func matchData(domain string, data whois_parser.WhoisInfo) []string {
+func matchData(domain string, data parser.WhoisInfo) []string {
 	var first, list []string
 
 	// Obtain the elements from the whois data
@@ -157,7 +157,7 @@ func matchData(domain string, data whois_parser.WhoisInfo) []string {
 }
 
 // Returns a slice of strings that could contain useful information to match on
-func breakout(r whois_parser.Registrant) []string {
+func breakout(r parser.Registrant) []string {
 	var list []string
 
 	list = UniqueAppend(list, strings.Split(r.Name, ",")...)
@@ -191,7 +191,7 @@ func attemptMatch(domain, candidate string, list []string, done chan string) {
 
 	c, err := whois.Whois(candidate)
 	if err == nil {
-		parsed, err := whois_parser.Parser(c)
+		parsed, err := parser.Parse(c)
 		if err == nil {
 			if compare(domain, list, parsed) {
 				result = candidate
@@ -202,7 +202,7 @@ func attemptMatch(domain, candidate string, list []string, done chan string) {
 	return
 }
 
-func compare(domain string, l []string, data whois_parser.WhoisInfo) bool {
+func compare(domain string, l []string, data parser.WhoisInfo) bool {
 	dlist := matchData(domain, data)
 
 	if len(dlist) == 0 {
